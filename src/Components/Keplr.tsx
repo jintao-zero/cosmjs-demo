@@ -2,6 +2,12 @@ import type { ChainInfo } from "@keplr-wallet/types";
 import React, { useEffect, useState } from "react";
 import osmo from "../config/osmosis";
 
+import {
+	assertIsDeliverTxSuccess,
+	SigningStargateClient
+} from "@cosmjs/stargate"
+import { cli } from "webpack";
+
 function Keplr() {
 	const [chain, setChain] = useState<ChainInfo>(osmo);
 	const [selected, setSelected] = useState<string>("OSMO");
@@ -28,16 +34,85 @@ function Keplr() {
 	}, [address, client, sendHash]);
 
 	// 连接keplr钱包  Todo
-	const connectWallet = async () => {};
+	const connectWallet = async () => {
+		if (!window.keplr) {
+			alert("Please install keplr extension");
+		}
+
+		await window.keplr.experimentalSuggestChain(chain);
+		await window.keplr.enable(chain.chainId);
+
+		const offlineSigner = window.keplr.getOfflineSigner(chain.chainId);
+
+		const accounts = await offlineSigner.getAccounts();
+		const client = await SigningStargateClient.connectWithSigner(
+			chain.rpc,
+			offlineSigner
+		);
+
+		setAddress(accounts[0].address);
+		setClient(client);
+	};
 
 	// 余额查询  Todo
-	const getBalances = async () => {};
+	const getBalances = async () => {
+		if (client) {
+			const _balance = await client.getBalance(
+				address,
+				chain.stakeCurrency.coinMinimalDenom
+			);
+			setBalance(_balance);
+		}
+	};
 
 	// txhash查询  Todo
-	const getTx = async () => {};
+	const getTx = async () => {
+		if (!tx) return;
+		const result = await client.getTx(tx);
+		setTxRes(result);
+	}; 
 
 	// 转账 Todo
-	const sendToken = async () => {};
+	const sendToken = async () => {
+		if (!client || !recipent || !address) return;
+
+		const convertAccount = 10 * 1e6;
+		const amount = [
+			{
+				denom: chain.stakeCurrency.coinMinimalDenom,
+				amount: convertAccount.toString(),
+			},
+		];
+
+		const fee = {
+			amount: [
+				{
+					denom: chain.stakeCurrency.coinMinimalDenom,
+					amount: 0.025,
+				}
+			],
+			gas: "200000",
+		};
+		try {
+			const result = await client.sendTokens(
+				address,
+				recipent,
+				amount,
+				fee,
+				"",
+			);
+			assertIsDeliverTxSuccess(result);
+			console.log(result);
+			if (result.code == 0) {
+				alert(
+					"transfer success, height:" + result.height + "hash:" + result.transactionHash
+				);
+				setTx(result.transactionHash);
+			} 
+		} catch (e) {
+			console.log(e);
+		}
+	};
 
 	return (
 		<div className="keplr">
